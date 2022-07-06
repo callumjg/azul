@@ -14,6 +14,7 @@ type Server struct {
 	Dispatch *chan Action
 }
 
+// Initialize a new server
 func New() *Server {
 	ch := make(chan Action)
 	return &Server{
@@ -22,19 +23,20 @@ func New() *Server {
 	}
 }
 
+// Receive all incoming actions and map them to appropriate handlers
 func (s *Server) Receive() {
 	for {
 		action := <-*s.Dispatch
 		switch action.Type {
-		case SET_NAME:
+		case NAME_SET:
 			s.SetName(action)
-		case JOIN_ROOM:
+		case ROOM_JOIN:
 			s.JoinRoom(action)
-		case LIST_ROOMS:
+		case ROOM_LIST:
 			s.ListRooms(action)
-		case MESSGE:
+		case MESSAGE:
 			s.Message(action)
-		case LEAVE_ROOM:
+		case ROOM_LEAVE:
 			s.LeaveRoom(action)
 		default:
 			action.Client.Error("Unrecognized action")
@@ -42,6 +44,7 @@ func (s *Server) Receive() {
 	}
 }
 
+// Creates an entry point for the server to work as a websocket handler
 func (s *Server) Handler(upgrader websocket.Upgrader) func(w http.ResponseWriter, r *http.Request) {
 
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -57,6 +60,7 @@ func (s *Server) Handler(upgrader websocket.Upgrader) func(w http.ResponseWriter
 	}
 
 }
+
 func (s *Server) SetName(a Action) {
 	name, ok := a.Payload.(string)
 	if !ok {
@@ -85,7 +89,7 @@ func (s *Server) JoinRoom(a Action) {
 
 func (s *Server) ListRooms(a Action) {
 
-	var rooms []string
+	rooms := []string{}
 	for _, r := range s.Rooms {
 		rooms = append(rooms, r.Name)
 	}
@@ -98,7 +102,7 @@ func (s *Server) ListRooms(a Action) {
 	}
 
 	ac := Action{
-		Type:    LIST_ROOMS,
+		Type:    ROOM_LIST,
 		Payload: string(b),
 	}
 	a.Client.Conn.WriteJSON(ac)
@@ -110,7 +114,7 @@ func (s *Server) Message(a Action) {
 		a.Client.Error("Invalid message")
 		return
 	}
-	a.Client.Broadcast(msg)
+	a.Client.Chat(msg)
 
 }
 

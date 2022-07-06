@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/gorilla/websocket"
 
@@ -11,11 +12,11 @@ import (
 )
 
 type Client struct {
-	ID     uuid.UUID
-	Name   string
-	Conn   *websocket.Conn
-	Room   *Room
-	Server *Server
+	ID     uuid.UUID       `json:"id"`
+	Name   string          `json:"name"`
+	Conn   *websocket.Conn `json:"-"`
+	Room   *Room           `json:"-"`
+	Server *Server         `json:"-"`
 }
 
 func NewClient(conn *websocket.Conn, s *Server) *Client {
@@ -37,32 +38,22 @@ func (c *Client) Recieve() {
 			c.Conn.Close()
 			break
 		}
-		var raw struct {
-			Type    string      `json:"type"`
-			Payload interface{} `json:"payload"`
-		}
+		var a Action
 
-		err = json.Unmarshal(m, &raw)
+		err = json.Unmarshal(m, &a)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Failed to read message from %s: %s\n", c.Conn.RemoteAddr().String(), err.Error())
 			c.Error("Invalid message received")
 			continue
 		}
-		a := Action{
-			Client:  c,
-			Type:    GetActionType(raw.Type),
-			Payload: raw.Payload,
-		}
-
+		a.Client = c
 		*c.Server.Dispatch <- a
 	}
 }
 
 func (c *Client) SetName(name string) {
-	oldName := c.Name
 	c.Name = name
-	c.Broadcast(fmt.Sprintf("%s changed their name to %s", oldName, name))
-
+	c.BroadcastAction(SActionUserUpdate(c))
 }
 
 func (c *Client) Error(msg string) {
@@ -77,16 +68,14 @@ func (c *Client) JoinRoom(r *Room) {
 	c.LeaveRoom()
 	r.Clients[c.ID] = c
 	c.Room = r
-
-	c.Broadcast(fmt.Sprintf("%s has joined the room\n", c.Name))
-	c.Message(fmt.Sprintf("Welcome to %s\n", r.Name))
+	c.BroadcastAction(SActionRoomJoin(c))
+	c.Action(SActionRoomSet(r))
 }
 
 func (c *Client) LeaveRoom() {
 	if c.Room != nil {
 		delete(c.Room.Clients, c.ID)
-		c.Broadcast(fmt.Sprintf("%s has let the room\n", c.Name))
-
+		c.BroadcastAction(SActionRoomLeave(c))
 		if len(c.Room.Clients) == 0 {
 			delete(c.Server.Rooms, c.Room.Name)
 		}
@@ -95,23 +84,33 @@ func (c *Client) LeaveRoom() {
 }
 
 // Send message to all other members of a room
-func (c *Client) Broadcast(msg string) {
+func (c *Client) Chat(msg string) {
 	if c.Room == nil {
 		return
 	}
-	for id, m := range c.Room.Clients {
-		if id != c.ID {
-			m.Message(msg)
-		}
+
+	chatMsg := ChatMessage{
+		UID:     c.ID,
+		Time:    time.Now().UnixMilli(),
+		Message: msg,
 	}
+
+	c.Room.BroadcastChat(chatMsg)
 
 }
 
-// Send message to client
-func (c *Client) Message(msg string) {
-	a := Action{
-		Type:    MESSGE,
-		Payload: msg,
-	}
+func (c *Client) Action(a Action) {
 	c.Conn.WriteJSON(a)
+}
+
+func (c *Client) BroadcastAction(a Action) {
+	if c.Room == nil {
+		return
+	}
+	for id, cl := range c.Room.Clients {
+		if id == c.ID {
+			continue
+		}
+		cl.Conn.WriteJSON(a)
+	}
 }

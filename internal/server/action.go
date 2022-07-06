@@ -1,38 +1,55 @@
 package server
 
-type ActionType = uint8
+type ActionType = string
 
 const (
-	UNDEFINED ActionType = iota
-	SET_NAME
-	JOIN_ROOM
-	LIST_ROOMS
-	ERROR
-	MESSGE
-	LEAVE_ROOM
+	ERROR       ActionType = "ERROR"
+	MESSAGE     ActionType = "MESSAGE"
+	ROOM_JOIN   ActionType = "ROOM_JOIN"
+	ROOM_LEAVE  ActionType = "ROOM_LEAVE"
+	ROOM_LIST   ActionType = "ROOM_LIST"
+	ROOM_SET    ActionType = "ROOM_SET"
+	NAME_SET    ActionType = "NAME_SET"
+	USER_UPDATE ActionType = "USER_UPDATE"
 )
-
-func GetActionType(s string) ActionType {
-	switch s {
-	case "SET_NAME":
-		return SET_NAME
-	case "JOIN_ROOM":
-		return JOIN_ROOM
-	case "LIST_ROOMS":
-		return LIST_ROOMS
-	case "ERROR":
-		return ERROR
-	case "MESSGE":
-		return MESSGE
-	case "LEAVE_ROOM":
-		return LEAVE_ROOM
-	default:
-		return UNDEFINED
-	}
-}
 
 type Action struct {
 	Client  *Client     `json:"-"`
 	Type    ActionType  `json:"type"`
 	Payload interface{} `json:"payload"`
+}
+
+func SActionRoomJoin(c *Client) Action {
+	return Action{
+		Type:    ROOM_JOIN,
+		Payload: c,
+	}
+}
+
+func SActionRoomSet(r *Room) Action {
+	return Action{
+		Type:    ROOM_SET,
+		Payload: r,
+	}
+}
+
+func SActionRoomLeave(c *Client) Action {
+	return Action{
+		Type:    ROOM_LEAVE,
+		Payload: c,
+	}
+}
+
+func SActionUserUpdate(c *Client) Action {
+	return Action{
+		Type:    USER_UPDATE,
+		Payload: c,
+	}
+}
+
+func SActionMessage(msg ChatMessage) Action {
+	return Action{
+		Type:    MESSAGE,
+		Payload: msg,
+	}
 }
