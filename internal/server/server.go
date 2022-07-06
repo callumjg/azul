@@ -27,17 +27,17 @@ func (s *Server) Receive() {
 		action := <-*s.Dispatch
 		switch action.Type {
 		case SET_NAME:
-			action.Client.SetName(action.Payload)
+			s.SetName(action)
 		case JOIN_ROOM:
-			s.Join(action.Payload, action.Client)
+			s.JoinRoom(action)
 		case LIST_ROOMS:
-			s.ListRooms(action.Client)
+			s.ListRooms(action)
 		case MESSGE:
-			action.Client.Broadcast(action.Payload)
+			s.Message(action)
 		case LEAVE_ROOM:
-			action.Client.LeaveRoom()
+			s.LeaveRoom(action)
 		default:
-			action.Client.Error(fmt.Sprintf("Unrecognized action %s", action.Type))
+			action.Client.Error("Unrecognized action")
 		}
 	}
 }
@@ -57,8 +57,21 @@ func (s *Server) Handler(upgrader websocket.Upgrader) func(w http.ResponseWriter
 	}
 
 }
+func (s *Server) SetName(a Action) {
+	name, ok := a.Payload.(string)
+	if !ok {
+		a.Client.Error("Invalid name")
+		return
+	}
+	a.Client.SetName(name)
 
-func (s *Server) Join(roomName string, c *Client) {
+}
+func (s *Server) JoinRoom(a Action) {
+	roomName, ok := a.Payload.(string)
+	if !ok {
+		a.Client.Error("Invalid room name")
+		return
+	}
 
 	r, ok := s.Rooms[roomName]
 
@@ -66,11 +79,11 @@ func (s *Server) Join(roomName string, c *Client) {
 		r = *NewRoom(roomName)
 		s.Rooms[roomName] = r
 	}
-	c.JoinRoom(&r)
+	a.Client.JoinRoom(&r)
 
 }
 
-func (s *Server) ListRooms(c *Client) {
+func (s *Server) ListRooms(a Action) {
 
 	var rooms []string
 	for _, r := range s.Rooms {
@@ -80,13 +93,27 @@ func (s *Server) ListRooms(c *Client) {
 	b, err := json.Marshal(rooms)
 	if err != nil {
 		fmt.Printf("Unable to list rooms due to error: %s", err.Error())
-		c.Error("Unable to list rooms")
+		a.Client.Error("Unable to list rooms")
 		return
 	}
 
-	a := Action{
+	ac := Action{
 		Type:    LIST_ROOMS,
 		Payload: string(b),
 	}
-	c.Conn.WriteJSON(a)
+	a.Client.Conn.WriteJSON(ac)
+}
+
+func (s *Server) Message(a Action) {
+	msg, ok := a.Payload.(string)
+	if !ok {
+		a.Client.Error("Invalid message")
+		return
+	}
+	a.Client.Broadcast(msg)
+
+}
+
+func (s *Server) LeaveRoom(a Action) {
+	a.Client.LeaveRoom()
 }

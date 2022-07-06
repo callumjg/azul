@@ -37,16 +37,23 @@ func (c *Client) Recieve() {
 			c.Conn.Close()
 			break
 		}
-		var a Action
-		err = json.Unmarshal(m, &a)
+		var raw struct {
+			Type    string      `json:"type"`
+			Payload interface{} `json:"payload"`
+		}
 
+		err = json.Unmarshal(m, &raw)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Failed to read message from %s: %s\n", c.Conn.RemoteAddr().String(), err.Error())
 			c.Error("Invalid message received")
 			continue
 		}
+		a := Action{
+			Client:  c,
+			Type:    GetActionType(raw.Type),
+			Payload: raw.Payload,
+		}
 
-		a.Client = c
 		*c.Server.Dispatch <- a
 	}
 }
@@ -54,7 +61,6 @@ func (c *Client) Recieve() {
 func (c *Client) SetName(name string) {
 	oldName := c.Name
 	c.Name = name
-	fmt.Printf("Set name to %s\n", name)
 	c.Broadcast(fmt.Sprintf("%s changed their name to %s", oldName, name))
 
 }
@@ -90,6 +96,9 @@ func (c *Client) LeaveRoom() {
 
 // Send message to all other members of a room
 func (c *Client) Broadcast(msg string) {
+	if c.Room == nil {
+		return
+	}
 	for id, m := range c.Room.Clients {
 		if id != c.ID {
 			m.Message(msg)
