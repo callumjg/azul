@@ -14,6 +14,7 @@ type Room struct {
 	Name    string                `json:"name"`
 	Clients map[uuid.UUID]*Client `json:"clients"`
 	Chat    *[]ChatMessage        `json:"chat"`
+	Game    *Game                 `json:"game"`
 }
 
 // Initialize a new room

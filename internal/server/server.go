@@ -38,8 +38,6 @@ func (s *Server) Receive() {
 			s.Message(action)
 		case ROOM_LEAVE:
 			s.LeaveRoom(action)
-		default:
-			action.Client.Error("Unrecognized action")
 		}
 	}
 }

@@ -9,24 +9,6 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-var connections map[string]*websocket.Conn
-
-func receive(conn *websocket.Conn) {
-	for {
-		messageType, p, err := conn.ReadMessage()
-		if err != nil {
-			fmt.Println(err.Error())
-			return
-		}
-		for addr, c := range connections {
-			if addr == conn.RemoteAddr().String() {
-				continue
-			}
-			c.WriteMessage(messageType, p)
-		}
-	}
-}
-
 func main() {
 
 	s := server.New()
