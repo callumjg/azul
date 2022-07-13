@@ -49,9 +49,6 @@ func (b *Board) StageNegativeTile(t Tile) {
 }
 
 func (b *Board) StageTile(t Tile, y uint8) error {
-	if y > 5 {
-		return errors.New("Row out of range")
-	}
 
 	// stage negatives row
 	if y == 5 || t == FirstPlayerTile {
@@ -76,17 +73,48 @@ func (b *Board) StageTile(t Tile, y uint8) error {
 	return nil
 }
 
+// StageTiles places tiles on the y row in the staging area
 func (b *Board) StageTiles(tiles []Tile, y uint8) error {
+	if y < 0 || y > 5 {
+		return errors.New("Row out of range")
+	}
+
+	// early exit if no tiles
+	if len(tiles) == 0 {
+		return nil
+	}
+
+	var color Tile
 	colors := map[Tile]bool{}
 
+	// check all tiles are the same type
 	for _, t := range tiles {
 		if t == FirstPlayerTile {
 			continue
 		}
+		color = t
 		colors[t] = true
 	}
+
 	if len(colors) > 1 {
-		return errors.New("Cannot stage tiles of different types")
+		return errors.New("Cannot stage tiles of multiple types on same row")
+	}
+
+	// validate non-negative rows
+	if y < 5 {
+		// check staged row is not another color
+		for _, j := range b.Staged[y] {
+			if j != color {
+				return errors.New("Cannot stage multiple colours in same row")
+			}
+		}
+
+		// check board has available place
+		for _, p := range b.Tiles[y] {
+			if p == color {
+				return errors.New("Tile alredy placed on board")
+			}
+		}
 	}
 
 	for _, t := range tiles {
@@ -98,63 +126,118 @@ func (b *Board) StageTiles(tiles []Tile, y uint8) error {
 	return nil
 }
 
-// // Returns the score of placing that tile or an error if it is an invalid operation
-// func (b *Board) PlaceTile(t Tile, x uint8, y uint8) (uint8, error) {
-// 	if b.GetTile(x, y) != EmptyTile {
-// 		return 0, errors.New("Position is not empty")
-// 	}
-// 	if b.GetBluePrint()[y][x] != t {
-// 		return 0, errors.New("Invalid tile position")
-// 	}
-// 	b.SetTile(t, x, y)
+// ScoreStaged updates the tile board and returns points awarded
+func (b *Board) ScoreStaged() (int8, []Tile) {
+	var score int8
+	removedTiles := []Tile{}
 
-// 	return b.ScoreTile(x, y), nil
-// }
+	for i := 0; i < len(b.Staged); i++ {
+		s, rip := b.scoreRow(uint8(i))
+		score += s
+		removedTiles = append(removedTiles, rip...)
+	}
 
-// func (b *Board) GetTile(x uint8, y uint8) Tile {
-// 	return (*b)[y][x]
-// }
+	return score, removedTiles
+}
 
-// func (b *Board) SetTile(t Tile, x uint8, y uint8) {
-// 	(*b)[y][x] = t
-// }
+// scoreRow updates the tile board and returns the points awarded for the row
+// as well as the discarded tiles
+func (b *Board) scoreRow(y uint8) (int8, []Tile) {
+	r := b.Staged[y]
 
-// func (b *Board) ScoreTile(x uint8, y uint8) uint8 {
-// 	var scoreX uint8
-// 	var scoreY uint8
+	// score negative
+	if y == 5 {
+		var score int8
+		switch len(r) {
+		case 0:
+			score = 0
+		case 1:
+			score = -1
+		case 2:
+			score = -2
+		case 3:
+			score = -4
+		case 4:
+			score = -6
+		case 5:
+			score = -8
+		case 6:
+			score = -11
+		default:
+			score = -14
+		}
+		d := []Tile{}
+		for _, t := range b.Staged[5] {
+			if t != FirstPlayerTile {
+				d = append(d, t)
+			}
+		}
+		b.Staged[5] = []Tile{}
+		return score, d
+	}
 
-// 	// score row
-// 	for i, t := range (*b)[y] {
-// 		// handle empty tile
-// 		if t == EmptyTile {
-// 			if uint8(i) < x {
-// 				scoreX = 0
-// 				continue
-// 			} else {
-// 				break
-// 			}
-// 		}
-// 		scoreX += 1
-// 	}
-// 	// score column
+	max := int(y + 1)
 
-// 	for i, r := range *b {
-// 		t := r[x]
+	// ignore row if it is incomplete
+	if len(r) < max {
+		return 0, []Tile{}
+	}
 
-// 		// handle empty tile
-// 		if t == EmptyTile {
-// 			if uint8(i) < y {
-// 				scoreY = 0
-// 				continue
-// 			} else {
-// 				break
-// 			}
-// 		}
-// 		scoreY += 1
+	var x uint8
+	col := b.Staged[y][0]
 
-// 	}
-// 	return scoreX + scoreY
-// }
+	m := b.GetBluePrint()
+
+	for i, v := range m[y] {
+		if v == col {
+			x = uint8(i)
+		}
+	}
+	// update tile board
+	b.Tiles[y][x] = col
+	// reset staged
+	d := b.Staged[y]
+	b.Staged[y] = []Tile{}
+	return b.ScoreTile(x, y), d
+
+}
+
+// ScoreTile returns the score of placing a tile on the board
+func (b *Board) ScoreTile(x uint8, y uint8) int8 {
+	var scoreX int8
+	var scoreY int8
+
+	// score row
+	for i, t := range b.Tiles[y] {
+		// handle empty tile
+		if t == EmptyTile {
+			if uint8(i) < x {
+				scoreX = 0
+				continue
+			} else {
+				break
+			}
+		}
+		scoreX += 1
+	}
+
+	// score column
+	for i, r := range b.Tiles {
+		t := r[x]
+		// handle empty tile
+		if t == EmptyTile {
+			if uint8(i) < y {
+				scoreY = 0
+				continue
+			} else {
+				break
+			}
+		}
+		scoreY += 1
+
+	}
+	return scoreX + scoreY
+}
 
 func (b *Board) GetBluePrint() [][]Tile {
 	return [][]Tile{
